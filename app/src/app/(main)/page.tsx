@@ -2,7 +2,15 @@ import type React from "react"
 import { ThemeSwitcher } from "@/components/ThemeSwitcher"
 import { TradeImporter } from "@/components/data/TradeImporter"
 import { createClient as createServerClient } from "@/lib/supabase/server"
-import { Brain, Activity, NotebookPen, ShieldCheck, ArrowUpRight, Clock3, Sparkles } from "lucide-react"
+import { Activity, NotebookPen, ShieldCheck, ArrowUpRight } from "lucide-react"
+
+// Widgets
+import { StatCard } from "@/components/dashboard/StatCard"
+import { RecentTradesWidget } from "@/components/dashboard/RecentTradesWidget"
+import { JarvisWidget } from "@/components/jarvis/JarvisWidget"
+import { JournalWidget } from "@/components/dashboard/JournalWidget"
+import { RhythmWidget } from "@/components/dashboard/RhythmWidget"
+import { Canvas } from "@/components/canvas/Canvas"
 
 type DashboardData = {
   mode: "live" | "demo"
@@ -141,10 +149,6 @@ function formatDate(dateString: string) {
   return new Intl.DateTimeFormat(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" }).format(new Date(dateString))
 }
 
-function formatTime(dateString: string) {
-  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(dateString))
-}
-
 function buildJarvisPrompts(data: DashboardData) {
   const prompts: string[] = []
 
@@ -171,9 +175,63 @@ function buildJarvisPrompts(data: DashboardData) {
   return prompts.slice(0, 3)
 }
 
+import { CanvasManager } from "@/components/canvas/CanvasManager"
+import { CanvasService } from "@/services/CanvasService"
+
+// ... (keep existing imports and types)
+
 export default async function DashboardPage() {
   const dashboard = await getDashboardData()
   const jarvisPrompts = buildJarvisPrompts(dashboard)
+  
+  // Fetch canvases (server-side)
+  let userCanvases: any[] = []
+  try {
+      // We need to handle the case where user is not logged in (demo mode)
+      // CanvasService.getUserCanvases checks auth internally and returns [] if not logged in
+      userCanvases = await CanvasService.getUserCanvases()
+  } catch (error) {
+      console.error("Failed to fetch canvases", error)
+  }
+
+  const widgets = {
+    stats_positions: (
+      <StatCard
+        label="Open Positions"
+        value={dashboard.openPositions}
+        icon={<Activity className="w-4 h-4" />}
+        hint="Positions marked OPEN in your journal"
+      />
+    ),
+    stats_trades: (
+      <StatCard
+        label="Trades Logged Today"
+        value={dashboard.tradesToday}
+        icon={<ArrowUpRight className="w-4 h-4" />}
+        hint={dashboard.tradesToday > 0 ? "Review execution vs. plan" : "Plan first, then execute"}
+      />
+    ),
+    stats_streak: (
+      <StatCard
+        label="Journal Streak"
+        value={`${dashboard.journalStreak}/7`}
+        icon={<NotebookPen className="w-4 h-4" />}
+        hint="Entries in the last 7 days"
+      />
+    ),
+    stats_rules: (
+      <StatCard
+        label="Active Rules"
+        value={dashboard.activeRules}
+        icon={<ShieldCheck className="w-4 h-4" />}
+        hint={dashboard.activeRules > 0 ? "Keep them visible today" : "Add a guardrail before trading"}
+      />
+    ),
+    recent_trades: <RecentTradesWidget trades={dashboard.recentTrades} />,
+    jarvis: <JarvisWidget prompts={jarvisPrompts} mode={dashboard.mode} />,
+    journal: <JournalWidget latestJournal={dashboard.latestJournal} />,
+    rhythm: <RhythmWidget journalStreak={dashboard.journalStreak} activeRules={dashboard.activeRules} />,
+  }
 
   return (
     <div className="w-full h-full overflow-y-auto bg-background">
@@ -195,145 +253,13 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <StatCard
-            label="Open Positions"
-            value={dashboard.openPositions}
-            icon={<Activity className="w-4 h-4" />}
-            hint="Positions marked OPEN in your journal"
-          />
-          <StatCard
-            label="Trades Logged Today"
-            value={dashboard.tradesToday}
-            icon={<ArrowUpRight className="w-4 h-4" />}
-            hint={dashboard.tradesToday > 0 ? "Review execution vs. plan" : "Plan first, then execute"}
-          />
-          <StatCard
-            label="Journal Streak"
-            value={`${dashboard.journalStreak}/7`}
-            icon={<NotebookPen className="w-4 h-4" />}
-            hint="Entries in the last 7 days"
-          />
-          <StatCard
-            label="Active Rules"
-            value={dashboard.activeRules}
-            icon={<ShieldCheck className="w-4 h-4" />}
-            hint={dashboard.activeRules > 0 ? "Keep them visible today" : "Add a guardrail before trading"}
-          />
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2 space-y-4">
-            <SectionHeader title="Recent Trades" subtitle="Ground Jarvis in your latest executions" />
-            <div className="rounded-xl border bg-card shadow-sm">
-              {dashboard.recentTrades.length === 0 ? (
-                <div className="p-6 text-sm text-muted-foreground text-center">No trades logged yet today.</div>
-              ) : (
-                <ul className="divide-y divide-border">
-                  {dashboard.recentTrades.map((trade) => (
-                    <li key={trade.id} className="p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`px-2 py-1 rounded-md text-xs font-semibold ${trade.direction === "BUY" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200" : "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-200"}`}>
-                          {trade.direction}
-                        </div>
-                        <div>
-                          <p className="font-semibold">{trade.symbol}</p>
-                          <p className="text-xs text-muted-foreground">{trade.quantity} @ ${trade.price.toFixed(2)}</p>
-                        </div>
-                      </div>
-                      <span className="text-xs text-muted-foreground">{formatTime(trade.timestamp)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <SectionHeader title="Jarvis" subtitle="Soft nudges to keep you grounded" />
-            <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Brain className="w-4 h-4" />
-                <span>{dashboard.mode === "demo" ? "Demo context" : "Live context"}</span>
-              </div>
-              <ul className="space-y-3">
-                {jarvisPrompts.map((prompt, idx) => (
-                  <li key={idx} className="flex gap-3">
-                    <Sparkles className="w-4 h-4 text-primary mt-1" />
-                    <p className="text-sm text-foreground">{prompt}</p>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2 space-y-4">
-            <SectionHeader title="Latest Journal" subtitle="Process beats outcome" />
-            <div className="rounded-xl border bg-card p-5 shadow-sm">
-              {dashboard.latestJournal ? (
-                <div className="space-y-2">
-                  <div className="text-xs text-muted-foreground flex items-center gap-2">
-                    <Clock3 className="w-3 h-3" />
-                    {formatDate(dashboard.latestJournal.date)}
-                  </div>
-                  <p className="text-base leading-relaxed">{dashboard.latestJournal.excerpt || "Entry saved with no text content."}</p>
-                  <p className="text-xs text-muted-foreground">Jarvis will reference this in chats today.</p>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-2 text-sm text-muted-foreground">
-                  <p>No journal entry yet today.</p>
-                  <p>Capture pre-trade intentions or a brief market read to center yourself.</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <SectionHeader title="Rhythm" subtitle="Habits that keep the room calm" />
-            <div className="rounded-xl border bg-card p-5 shadow-sm space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold">
-                  {dashboard.journalStreak}
-                </div>
-                <div>
-                  <p className="font-semibold">Days logged this week</p>
-                  <p className="text-xs text-muted-foreground">Aim for 5/7 to build the muscle.</p>
-                </div>
-              </div>
-              <div className="flex gap-2 text-xs text-muted-foreground">
-                <ShieldCheck className="w-4 h-4" />
-                <span>{dashboard.activeRules > 0 ? "Keep rules visible while journaling and reviewing trades." : "Add one rule today to anchor discipline."}</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <CanvasManager 
+            widgets={widgets} 
+            initialCanvases={userCanvases}
+        />
       </div>
     </div>
   )
 }
 
-function StatCard({ label, value, icon, hint }: { label: string; value: string | number; icon: React.ReactNode; hint?: string }) {
-  return (
-    <div className="rounded-xl border bg-card text-card-foreground shadow-sm p-5 flex flex-col gap-2">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <span className="p-2 rounded-lg bg-muted/50 text-foreground flex items-center justify-center">{icon}</span>
-        <span>{label}</span>
-      </div>
-      <div className="text-3xl font-bold">{value}</div>
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-    </div>
-  )
-}
 
-function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
-  return (
-    <div className="flex items-center justify-between">
-      <div>
-        <h3 className="font-semibold leading-none tracking-tight">{title}</h3>
-        {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
-      </div>
-    </div>
-  )
-}

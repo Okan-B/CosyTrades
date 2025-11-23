@@ -42,3 +42,13 @@ export const searchMarket = async (query: string): Promise<MarketStock[]> => {
             stock.name.toLowerCase().includes(lowerQuery)
     );
 };
+
+export const getBatchMarketData = async (tickers: string[]): Promise<MarketStock[]> => {
+    // Simulate network delay
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    if (!tickers.length) return [];
+
+    const upperTickers = tickers.map(t => t.toUpperCase());
+    return MOCK_MARKET_DATA.filter(stock => upperTickers.includes(stock.ticker));
+};

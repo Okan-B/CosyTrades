@@ -2,57 +2,51 @@
 
 import * as React from "react"
 import { Search, Filter } from "lucide-react"
-import { CanvasCard, CanvasSetup } from "./CanvasCard"
+import { CanvasCard } from "./CanvasCard"
 
-const MOCK_COMMUNITY_CANVASES: CanvasSetup[] = [
-    {
-        id: "1",
-        title: "Swing Trading Daily",
-        author: "TraderJoe",
-        description: "A focused layout for daily swing trading analysis. Includes sections for pre-market check, key levels, and trade execution notes.",
-        upvotes: 124,
-        tags: ["Swing", "Daily"]
-    },
-    {
-        id: "2",
-        title: "Long Term Value",
-        author: "WarrenBuff",
-        description: "Deep dive fundamental analysis template. Perfect for quarterly earnings reviews and long-term thesis tracking.",
-        upvotes: 89,
-        tags: ["Investing", "Fundamental"]
-    },
-    {
-        id: "3",
-        title: "Scalping Setup",
-        author: "FastFingers",
-        description: "Minimalist layout for quick decision making. Focuses on price action notes and rapid execution logging.",
-        upvotes: 56,
-        tags: ["Scalping", "Intraday"]
-    },
-    {
-        id: "4",
-        title: "Crypto Altcoin Gem",
-        author: "MoonShot",
-        description: " specialized template for analyzing low-cap altcoins. Includes sections for tokenomics, team analysis, and roadmap tracking.",
-        upvotes: 210,
-        tags: ["Crypto", "Research"]
-    },
-    {
-        id: "5",
-        title: "Forex Pair Analysis",
-        author: "PipMaster",
-        description: "Standard template for major pair analysis. Includes macro economic calendar notes and technical correlation checks.",
-        upvotes: 45,
-        tags: ["Forex", "Macro"]
-    }
-]
+import { CanvasService, Canvas } from "@/services/CanvasService"
+import { toast } from "sonner"
 
 export function CommunityCanvasExplorer() {
     const [searchQuery, setSearchQuery] = React.useState("")
+    const [canvases, setCanvases] = React.useState<Canvas[]>([])
+    const [isLoading, setIsLoading] = React.useState(true)
 
-    const filteredCanvases = MOCK_COMMUNITY_CANVASES.filter(canvas =>
-        canvas.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        canvas.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+    React.useEffect(() => {
+        loadCanvases()
+    }, [])
+
+    const loadCanvases = async () => {
+        try {
+            const data = await CanvasService.getCommunityCanvases()
+            setCanvases(data)
+        } catch (error) {
+            console.error("Failed to load community canvases", error)
+            toast.error("Failed to load community canvases")
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    const handleImport = async (canvas: Canvas) => {
+        try {
+            await CanvasService.saveCanvas(
+                `Imported: ${canvas.name}`,
+                canvas.layout,
+                false, // Private by default
+                `Imported from ${canvas.author_name || "Community"}`,
+                canvas.tags
+            )
+            toast.success("Canvas imported successfully! Check your canvases.")
+        } catch (error) {
+            console.error("Failed to import canvas", error)
+            toast.error("Failed to import canvas")
+        }
+    }
+
+    const filteredCanvases = canvases.filter(canvas =>
+        canvas.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        canvas.tags?.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
     )
 
     return (
@@ -73,11 +67,23 @@ export function CommunityCanvasExplorer() {
                 </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto pb-4">
-                {filteredCanvases.map(setup => (
-                    <CanvasCard key={setup.id} setup={setup} />
-                ))}
-            </div>
+            {isLoading ? (
+                <div className="flex items-center justify-center h-40 text-muted-foreground">
+                    Loading community setups...
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto pb-4">
+                    {filteredCanvases.length > 0 ? (
+                        filteredCanvases.map(setup => (
+                            <CanvasCard key={setup.id} setup={setup} onImport={handleImport} />
+                        ))
+                    ) : (
+                        <div className="col-span-2 text-center py-10 text-muted-foreground">
+                            No canvases found. Be the first to share one!
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     )
 }

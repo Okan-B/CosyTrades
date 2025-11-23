@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Plus, Check } from "lucide-react"
+import { Plus, Check, X } from "lucide-react"
 import { MarketStock } from "@/services/MarketSearchService"
 
 interface SearchResultsProps {
@@ -95,10 +95,21 @@ export function SearchResults({ results, onToggle, isSearching, addedTickers }: 
                                     onToggle(stock)
                                 }}
                                 onMouseLeave={() => removeHoverLock(stock.ticker)}
-                                className={`p-1.5 rounded-md transition-all ${buttonStateClasses}`}
+                                className={`p-1.5 rounded-md transition-all group/btn ${buttonStateClasses}`}
                                 title={isAdded ? "Remove from Watchlist" : "Add to Watchlist"}
                             >
-                                {isAdded ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                                {isAdded ? (
+                                    isHoverLocked ? (
+                                        <Check className="w-4 h-4" />
+                                    ) : (
+                                        <>
+                                            <Check className="w-4 h-4 group-hover/btn:hidden" />
+                                            <X className="w-4 h-4 hidden group-hover/btn:block" />
+                                        </>
+                                    )
+                                ) : (
+                                    <Plus className="w-4 h-4" />
+                                )}
                             </button>
                         </div>
                     </div>

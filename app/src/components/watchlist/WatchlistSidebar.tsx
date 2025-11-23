@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Search, Plus, TrendingUp, TrendingDown, Globe } from "lucide-react"
+import { Search, Plus, TrendingUp, TrendingDown, Globe, Loader2 } from "lucide-react"
 import { Modal } from "@/components/ui/modal"
 import { CommunityCanvasExplorer } from "@/components/community/CommunityCanvasExplorer"
 
@@ -10,26 +10,47 @@ interface WatchlistSidebarProps {
     selectedTicker: string | null
 }
 
-import { searchMarket, MarketStock } from "@/services/MarketSearchService"
+import { searchMarket, getBatchMarketData, MarketStock } from "@/services/MarketSearchService"
+import { WatchlistService, WatchlistItem } from "@/services/WatchlistService"
 import { SearchResults } from "./SearchResults"
-
-// Initial mock data
-const INITIAL_WATCHLIST = [
-    { ticker: "AAPL", name: "Apple Inc.", price: 182.50, change: 1.2, notes: true },
-    { ticker: "TSLA", name: "Tesla, Inc.", price: 175.30, change: -2.5, notes: false },
-    { ticker: "NVDA", name: "NVIDIA Corp.", price: 875.90, change: 3.8, notes: true },
-    { ticker: "MSFT", name: "Microsoft Corp.", price: 415.10, change: 0.5, notes: true },
-    { ticker: "AMD", name: "Advanced Micro Devices", price: 170.20, change: -1.1, notes: false },
-]
 
 export function WatchlistSidebar({ onSelectTicker, selectedTicker }: WatchlistSidebarProps) {
     const [isCommunityModalOpen, setIsCommunityModalOpen] = React.useState(false)
     const [searchQuery, setSearchQuery] = React.useState("")
-    const [watchlist, setWatchlist] = React.useState(INITIAL_WATCHLIST)
+    
+    // State
+    const [watchlistItems, setWatchlistItems] = React.useState<WatchlistItem[]>([])
+    const [marketData, setMarketData] = React.useState<Record<string, MarketStock>>({})
+    const [isLoading, setIsLoading] = React.useState(true)
+    
     const [searchResults, setSearchResults] = React.useState<MarketStock[]>([])
     const [isSearching, setIsSearching] = React.useState(false)
     const [showResults, setShowResults] = React.useState(false)
     const sidebarRef = React.useRef<HTMLDivElement>(null)
+
+    // Load Watchlist
+    const loadWatchlist = React.useCallback(async () => {
+        try {
+            const items = await WatchlistService.getWatchlist()
+            setWatchlistItems(items)
+            
+            if (items.length > 0) {
+                const tickers = items.map(i => i.symbol)
+                const quotes = await getBatchMarketData(tickers)
+                const quoteMap: Record<string, MarketStock> = {}
+                quotes.forEach(q => quoteMap[q.ticker] = q)
+                setMarketData(quoteMap)
+            }
+        } catch (error) {
+            console.error("Failed to load watchlist", error)
+        } finally {
+            setIsLoading(false)
+        }
+    }, [])
+
+    React.useEffect(() => {
+        loadWatchlist()
+    }, [loadWatchlist])
 
     // Click outside handler
     React.useEffect(() => {
@@ -66,18 +87,43 @@ export function WatchlistSidebar({ onSelectTicker, selectedTicker }: WatchlistSi
         return () => clearTimeout(timer)
     }, [searchQuery])
 
-    const handleToggleWatchlist = (stock: MarketStock) => {
-        setWatchlist(prev => {
-            const exists = prev.some(item => item.ticker === stock.ticker)
-            if (exists) {
-                return prev.filter(item => item.ticker !== stock.ticker)
+    const handleToggleWatchlist = async (stock: MarketStock) => {
+        // Optimistic update
+        const exists = watchlistItems.some(item => item.symbol === stock.ticker)
+        
+        if (exists) {
+            // Remove
+            setWatchlistItems(prev => prev.filter(i => i.symbol !== stock.ticker))
+            try {
+                await WatchlistService.removeFromWatchlist(stock.ticker)
+            } catch (error) {
+                console.error("Failed to remove", error)
+                loadWatchlist() // Revert on error
             }
-            return [...prev, { ...stock, notes: false }]
-        })
-        // Do not clear search query or close results
+        } else {
+            // Add
+            const tempItem: WatchlistItem = {
+                id: "temp-" + Date.now(),
+                user_id: "temp",
+                symbol: stock.ticker,
+                added_at: new Date().toISOString(),
+                has_notes: false,
+                display_order: 999
+            }
+            setWatchlistItems(prev => [...prev, tempItem])
+            setMarketData(prev => ({ ...prev, [stock.ticker]: stock }))
+            
+            try {
+                await WatchlistService.addToWatchlist(stock.ticker)
+                loadWatchlist() // Reload to get real ID
+            } catch (error) {
+                console.error("Failed to add", error)
+                setWatchlistItems(prev => prev.filter(i => i.symbol !== stock.ticker))
+            }
+        }
     }
 
-    const addedTickers = new Set(watchlist.map(item => item.ticker))
+    const addedTickers = new Set(watchlistItems.map(item => item.symbol))
 
     return (
         <>
@@ -118,34 +164,48 @@ export function WatchlistSidebar({ onSelectTicker, selectedTicker }: WatchlistSi
                             isSearching={isSearching}
                             addedTickers={addedTickers}
                         />
+                    ) : isLoading ? (
+                        <div className="flex items-center justify-center h-32 text-muted-foreground">
+                            <Loader2 className="w-6 h-6 animate-spin" />
+                        </div>
                     ) : (
                         <>
-                            {watchlist.map((item) => (
-                                <button
-                                    key={item.ticker}
-                                    onClick={() => onSelectTicker(item.ticker)}
-                                    className={`w-full text-left p-3 rounded-md transition-colors flex items-center justify-between group ${selectedTicker === item.ticker
-                                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                                        : "hover:bg-sidebar-accent/50 text-sidebar-foreground"
-                                        }`}
-                                >
-                                    <div>
-                                        <div className="font-medium flex items-center gap-2">
-                                            {item.ticker}
-                                            {item.notes && <span className="w-1.5 h-1.5 rounded-full bg-primary/50" title="Has notes" />}
+                            {watchlistItems.map((item) => {
+                                const stock = marketData[item.symbol] || { 
+                                    ticker: item.symbol, 
+                                    name: "Loading...", 
+                                    price: 0, 
+                                    change: 0,
+                                    sector: ""
+                                }
+                                
+                                return (
+                                    <button
+                                        key={item.symbol}
+                                        onClick={() => onSelectTicker(item.symbol)}
+                                        className={`w-full text-left p-3 rounded-md transition-colors flex items-center justify-between group ${selectedTicker === item.symbol
+                                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                                            : "hover:bg-sidebar-accent/50 text-sidebar-foreground"
+                                            }`}
+                                    >
+                                        <div>
+                                            <div className="font-medium flex items-center gap-2">
+                                                {item.symbol}
+                                                {item.has_notes && <span className="w-1.5 h-1.5 rounded-full bg-primary/50" title="Has notes" />}
+                                            </div>
+                                            <div className="text-xs text-muted-foreground truncate max-w-[120px]">{stock.name}</div>
                                         </div>
-                                        <div className="text-xs text-muted-foreground truncate max-w-[120px]">{item.name}</div>
-                                    </div>
-                                    <div className="text-right">
-                                        <div className="font-mono text-sm">{item.price.toFixed(2)}</div>
-                                        <div className={`text-xs flex items-center justify-end gap-0.5 ${item.change >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                                            {item.change >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                                            {Math.abs(item.change)}%
+                                        <div className="text-right">
+                                            <div className="font-mono text-sm">{stock.price.toFixed(2)}</div>
+                                            <div className={`text-xs flex items-center justify-end gap-0.5 ${stock.change >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                                                {stock.change >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                                                {Math.abs(stock.change)}%
+                                            </div>
                                         </div>
-                                    </div>
-                                </button>
-                            ))}
-                            {watchlist.length === 0 && (
+                                    </button>
+                                )
+                            })}
+                            {watchlistItems.length === 0 && (
                                 <div className="p-4 text-center text-sm text-muted-foreground">
                                     Your watchlist is empty
                                 </div>

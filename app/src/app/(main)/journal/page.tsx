@@ -71,10 +71,15 @@ export default function JournalPage() {
         const contentString = JSON.stringify(content)
 
         if (entryId) {
-            await supabase
+            const { error } = await supabase
                 .from('journal_entries')
                 .update({ content: contentString })
                 .eq('id', entryId)
+            
+            if (error) {
+                console.error("Save failed", JSON.stringify(error, null, 2))
+                alert("Failed to save entry")
+            }
         } else {
             const { data, error } = await supabase
                 .from('journal_entries')
@@ -89,7 +94,7 @@ export default function JournalPage() {
             
             if (data) setEntryId(data.id)
             if (error) {
-                console.error("Save failed", error)
+                console.error("Save failed", JSON.stringify(error, null, 2))
                 alert("Failed to save entry")
             }
         }
