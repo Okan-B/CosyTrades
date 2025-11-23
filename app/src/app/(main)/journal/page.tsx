@@ -1,28 +1,26 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useRef, useCallback } from "react"
 import { JournalEditor } from "@/components/journal/JournalEditor"
 import { createClient } from "@/lib/supabase/client"
 import { PartialBlock } from "@blocknote/core"
-import { Loader2, Save } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Loader2, Check } from "lucide-react"
 
 export default function JournalPage() {
     const [content, setContent] = useState<PartialBlock[] | undefined>(undefined)
     const [isLoading, setIsLoading] = useState(true)
     const [isSaving, setIsSaving] = useState(false)
+    const [lastSaved, setLastSaved] = useState<Date | null>(null)
     const [entryId, setEntryId] = useState<string | null>(null)
+    const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
     const supabase = useMemo(() => createClient(), [])
-    // Simple YYYY-MM-DD date
     const today = new Date().toISOString().split('T')[0]
 
     useEffect(() => {
         const loadEntry = async () => {
             const { data: { user } } = await supabase.auth.getUser()
             
-            // If no user, we can't load properly. 
-            // For MVP dev, we might just show empty editor but saving will fail.
             if (!user) {
                 setIsLoading(false)
                 return
@@ -33,19 +31,18 @@ export default function JournalPage() {
                 .select('*')
                 .eq('user_id', user.id)
                 .eq('date', today)
-                .maybeSingle() // Use maybeSingle instead of single to avoid 406 on 0 rows
+                .maybeSingle()
 
             if (data) {
                 setEntryId(data.id)
                 try {
-                    // Supabase Text column might contain the JSON string
                     setContent(JSON.parse(data.content) as PartialBlock[])
                 } catch (e) {
                     console.error("Failed to parse journal content", e)
                     setContent(undefined) 
                 }
             } else {
-                setContent(undefined) // Let editor handle default empty state
+                setContent(undefined)
             }
             setIsLoading(false)
         }
@@ -53,22 +50,16 @@ export default function JournalPage() {
         loadEntry()
     }, [today, supabase])
 
-    // Local state update
-    const handleEditorChange = (newContent: PartialBlock[]) => {
-        setContent(newContent)
-    }
-
-    const saveToDb = async () => {
+    const saveToDb = useCallback(async (contentToSave: PartialBlock[]) => {
         setIsSaving(true)
         const { data: { user } } = await supabase.auth.getUser()
         
         if (!user) {
-            alert("Please login to save.")
             setIsSaving(false)
             return
         }
 
-        const contentString = JSON.stringify(content)
+        const contentString = JSON.stringify(contentToSave)
 
         if (entryId) {
             const { error } = await supabase
@@ -77,8 +68,9 @@ export default function JournalPage() {
                 .eq('id', entryId)
             
             if (error) {
-                console.error("Save failed", JSON.stringify(error, null, 2))
-                alert("Failed to save entry")
+                console.error("Auto-save failed", JSON.stringify(error, null, 2))
+            } else {
+                setLastSaved(new Date())
             }
         } else {
             const { data, error } = await supabase
@@ -87,19 +79,44 @@ export default function JournalPage() {
                     user_id: user.id,
                     date: today,
                     content: contentString,
-                    mood_score: 5 // default
+                    mood_score: 5
                 })
                 .select()
                 .single()
             
-            if (data) setEntryId(data.id)
+            if (data) {
+                setEntryId(data.id)
+                setLastSaved(new Date())
+            }
             if (error) {
-                console.error("Save failed", JSON.stringify(error, null, 2))
-                alert("Failed to save entry")
+                console.error("Auto-save failed", JSON.stringify(error, null, 2))
             }
         }
         setIsSaving(false)
-    }
+    }, [entryId, supabase, today])
+
+    const handleEditorChange = useCallback((newContent: PartialBlock[]) => {
+        setContent(newContent)
+        
+        // Clear existing timeout
+        if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current)
+        }
+
+        // Set new timeout (debounce)
+        saveTimeoutRef.current = setTimeout(() => {
+            saveToDb(newContent)
+        }, 2000) // Auto-save after 2 seconds of inactivity
+    }, [saveToDb])
+
+    // Cleanup timeout on unmount
+    useEffect(() => {
+        return () => {
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current)
+            }
+        }
+    }, [])
 
     if (isLoading) {
         return <div className="flex h-full items-center justify-center min-h-[50vh]"><Loader2 className="animate-spin h-8 w-8 text-muted-foreground" /></div>
@@ -112,10 +129,19 @@ export default function JournalPage() {
                     <h1 className="text-3xl font-bold tracking-tight">Journal</h1>
                     <p className="text-muted-foreground">Reflection for {today}</p>
                 </div>
-                <Button onClick={saveToDb} disabled={isSaving}>
-                    {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                    {isSaving ? 'Saving...' : 'Save Entry'}
-                </Button>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    {isSaving ? (
+                        <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span>Saving...</span>
+                        </>
+                    ) : lastSaved ? (
+                        <>
+                            <Check className="h-4 w-4 text-green-600" />
+                            <span>Saved {lastSaved.toLocaleTimeString()}</span>
+                        </>
+                    ) : null}
+                </div>
             </div>
             
             <div className="flex-1">
