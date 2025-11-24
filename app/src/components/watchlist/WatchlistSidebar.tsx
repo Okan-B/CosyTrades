@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Search, Plus, TrendingUp, TrendingDown, Globe, Loader2 } from "lucide-react"
+import { Search, Plus, TrendingUp, TrendingDown, Globe, Loader2, X } from "lucide-react"
 import { Modal } from "@/components/ui/modal"
 import { CommunityCanvasExplorer } from "@/components/community/CommunityCanvasExplorer"
 
@@ -147,8 +147,19 @@ export function WatchlistSidebar({ onSelectTicker, selectedTicker }: WatchlistSi
                                 onFocus={() => {
                                     if (searchQuery.trim()) setShowResults(true)
                                 }}
-                                className="w-full pl-8 pr-4 py-2 bg-sidebar-accent/50 border border-sidebar-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-sidebar-ring"
+                                className="w-full pl-8 pr-8 py-2 bg-sidebar-accent/50 border border-sidebar-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-sidebar-ring"
                             />
+                            {searchQuery && (
+                                <button
+                                    onClick={() => {
+                                        setSearchQuery("")
+                                        setShowResults(false)
+                                    }}
+                                    className="absolute right-2 top-2.5 text-muted-foreground hover:text-foreground transition-colors"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            )}
                         </div>
                         <button className="p-2 rounded-md border border-dashed border-sidebar-border text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground transition-colors" title="Add Ticker">
                             <Plus className="w-4 h-4" />
@@ -161,6 +172,7 @@ export function WatchlistSidebar({ onSelectTicker, selectedTicker }: WatchlistSi
                         <SearchResults
                             results={searchResults}
                             onToggle={handleToggleWatchlist}
+                            onSelect={(stock) => onSelectTicker(stock.ticker)}
                             isSearching={isSearching}
                             addedTickers={addedTickers}
                         />

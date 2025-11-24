@@ -20,20 +20,20 @@ const DEFAULT_LAYOUT = {
     { i: "stats_trades", x: 3, y: 0, w: 3, h: 4 },
     { i: "stats_streak", x: 6, y: 0, w: 3, h: 4 },
     { i: "stats_rules", x: 9, y: 0, w: 3, h: 4 },
-    { i: "recent_trades", x: 0, y: 4, w: 8, h: 8 },
-    { i: "jarvis", x: 8, y: 4, w: 4, h: 8 },
-    { i: "journal", x: 0, y: 12, w: 8, h: 8 },
-    { i: "rhythm", x: 8, y: 12, w: 4, h: 8 },
+    { i: "recent_trades", x: 0, y: 4, w: 8, h: 10 }, // Increased height
+    { i: "jarvis", x: 8, y: 4, w: 4, h: 18 }, // Increased height to match full column
+    { i: "journal", x: 0, y: 14, w: 8, h: 8 },
+    { i: "rhythm", x: 8, y: 22, w: 4, h: 8 },
   ],
   md: [
     { i: "stats_positions", x: 0, y: 0, w: 5, h: 4 },
     { i: "stats_trades", x: 5, y: 0, w: 5, h: 4 },
     { i: "stats_streak", x: 0, y: 4, w: 5, h: 4 },
     { i: "stats_rules", x: 5, y: 4, w: 5, h: 4 },
-    { i: "recent_trades", x: 0, y: 8, w: 10, h: 8 },
-    { i: "jarvis", x: 0, y: 16, w: 10, h: 6 },
-    { i: "journal", x: 0, y: 22, w: 10, h: 8 },
-    { i: "rhythm", x: 0, y: 30, w: 10, h: 6 },
+    { i: "recent_trades", x: 0, y: 8, w: 10, h: 10 },
+    { i: "jarvis", x: 0, y: 18, w: 10, h: 10 },
+    { i: "journal", x: 0, y: 28, w: 10, h: 8 },
+    { i: "rhythm", x: 0, y: 36, w: 10, h: 6 },
   ]
 }
 

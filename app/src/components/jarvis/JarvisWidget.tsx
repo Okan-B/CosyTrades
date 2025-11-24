@@ -1,11 +1,12 @@
 "use client"
 
 import * as React from "react"
-import { Brain, Sparkles, Send, Bot, User, Wand2, RefreshCw, NotebookPen, Clock3 } from "lucide-react"
+import { Brain, Sparkles, Send, Bot, User, Wand2, RefreshCw, Settings2, X } from "lucide-react"
 import { SectionHeader } from "../dashboard/SectionHeader"
 import { JarvisService, JarvisMessage, JarvisContext } from "@/services/JarvisService"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 interface JarvisWidgetProps {
   prompts?: string[]
@@ -160,39 +161,41 @@ export function JarvisWidget({ prompts = [], mode }: JarvisWidgetProps) {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="px-3 py-1 rounded-full bg-muted text-xs text-muted-foreground border border-border">{sessionLabel}</span>
+              <span className="px-3 py-1 rounded-full bg-muted text-xs text-muted-foreground border border-border hidden sm:inline-block">{sessionLabel}</span>
+              
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary">
+                    <Settings2 className="w-4 h-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-4" align="end">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Wand2 className="w-4 h-4 text-primary" />
+                      Personalise Jarvis
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Customize how Jarvis responds to you. Changes autosave.
+                    </p>
+                    <textarea
+                      value={systemPrompt}
+                      onChange={(e) => setSystemPrompt(e.target.value)}
+                      placeholder="E.g. Keep answers concise, call me by my nickname, prefer risk-focused language..."
+                      rows={4}
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+                    />
+                    <div className="text-[10px] text-right text-muted-foreground">
+                      {promptSavedAt ? `Saved ${formatShortTime(promptSavedAt)}` : "Autosaves"}
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
               <Button variant="ghost" size="sm" className="gap-1" onClick={handleResetConversation}>
                 <RefreshCw className="w-4 h-4" />
-                Reset
+                <span className="sr-only sm:not-sr-only">Reset</span>
               </Button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-            <ContextPill icon={<NotebookPen className="w-3.5 h-3.5" />} label={`${noteCount} notes`} tooltip="Saved ticker notes Jarvis can reference." />
-            <ContextPill icon={<Sparkles className="w-3.5 h-3.5" />} label={`${context?.journalEntries?.length ?? 0} journal entries`} tooltip="Recent reflections are in context." />
-            <ContextPill icon={<Clock3 className="w-3.5 h-3.5" />} label={`${context?.recentTrades?.length ?? 0} recent trades`} tooltip="Latest executions Jarvis can inspect." />
-            <ContextPill icon={<Brain className="w-3.5 h-3.5" />} label={context?.activeCanvas?.name || "Default canvas"} tooltip="Active layout Jarvis is aware of." />
-          </div>
-
-          <div className="rounded-xl border border-border/70 bg-background/70 p-3 space-y-2">
-            <div className="flex items-start gap-2">
-              <div className="mt-0.5 text-muted-foreground">
-                <Wand2 className="w-4 h-4" />
-              </div>
-              <div className="flex-1 space-y-1">
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Personalise how Jarvis responds</span>
-                  <span>{promptSavedAt ? `Saved ${formatShortTime(promptSavedAt)}` : "Autosaves"}</span>
-                </div>
-                <textarea
-                  value={systemPrompt}
-                  onChange={(e) => setSystemPrompt(e.target.value)}
-                  placeholder="E.g. Keep answers concise, call me by my nickname, prefer risk-focused language..."
-                  rows={3}
-                  className="w-full rounded-lg border border-border bg-background/80 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
-              </div>
             </div>
           </div>
         </div>
@@ -285,11 +288,4 @@ function countNoteSnippets(context: JarvisContext | null) {
   return context.stockNotes.reduce((acc, item) => acc + (item.notes?.length || 0), 0)
 }
 
-function ContextPill({ icon, label, tooltip }: { icon: React.ReactNode; label: string; tooltip?: string }) {
-  return (
-    <div className="flex items-center gap-2 rounded-lg border border-border bg-background/80 px-2.5 py-2" title={tooltip}>
-      <span className="text-muted-foreground">{icon}</span>
-      <span className="text-foreground text-xs font-medium truncate">{label}</span>
-    </div>
-  )
-}
+

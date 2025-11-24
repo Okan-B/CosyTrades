@@ -6,14 +6,17 @@ import { Loader2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { Modal } from "@/components/ui/modal"
 
+import { Trade } from "@/services/TradeService"
+
 interface AddTradeModalProps {
     isOpen: boolean
     onClose: () => void
     ticker?: string | null
     onSuccess?: () => void
+    initialData?: Trade | null
 }
 
-export function AddTradeModal({ isOpen, onClose, ticker, onSuccess }: AddTradeModalProps) {
+export function AddTradeModal({ isOpen, onClose, ticker, onSuccess, initialData }: AddTradeModalProps) {
     const router = useRouter()
     const pathname = usePathname()
     const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -29,12 +32,21 @@ export function AddTradeModal({ isOpen, onClose, ticker, onSuccess }: AddTradeMo
         notes: ""
     })
 
-    // Update symbol if ticker prop changes
+    // Update form when initialData or ticker changes
     React.useEffect(() => {
-        if (ticker) {
+        if (initialData) {
+            setFormData({
+                symbol: initialData.symbol,
+                direction: initialData.direction,
+                quantity: initialData.quantity.toString(),
+                price: initialData.price.toString(),
+                date: new Date(initialData.timestamp).toISOString().split('T')[0],
+                notes: initialData.notes || ""
+            })
+        } else if (ticker) {
             setFormData(prev => ({ ...prev, symbol: ticker }))
         }
-    }, [ticker])
+    }, [initialData, ticker, isOpen])
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target
@@ -57,37 +69,52 @@ export function AddTradeModal({ isOpen, onClose, ticker, onSuccess }: AddTradeMo
                 return
             }
 
-            const { error: insertError } = await supabase
-                .from('trades')
-                .insert({
-                    user_id: user.id,
-                    symbol: formData.symbol.toUpperCase(),
-                    direction: formData.direction,
-                    quantity: parseFloat(formData.quantity),
-                    price: parseFloat(formData.price),
-                    timestamp: new Date(formData.date).toISOString(),
-                    notes: formData.notes,
-                    currency: 'USD' // Default for now
-                })
+            const tradeData = {
+                user_id: user.id,
+                symbol: formData.symbol.toUpperCase(),
+                direction: formData.direction,
+                quantity: parseFloat(formData.quantity),
+                price: parseFloat(formData.price),
+                timestamp: new Date(formData.date).toISOString(),
+                notes: formData.notes,
+                currency: 'USD' // Default for now
+            }
 
-            if (insertError) throw insertError
+            if (initialData) {
+                // Update existing trade
+                const { error: updateError } = await supabase
+                    .from('trades')
+                    .update(tradeData)
+                    .eq('id', initialData.id)
+
+                if (updateError) throw updateError
+            } else {
+                // Insert new trade
+                const { error: insertError } = await supabase
+                    .from('trades')
+                    .insert(tradeData)
+
+                if (insertError) throw insertError
+            }
 
             // Reset form and close
-            setFormData({
-                symbol: ticker || "",
-                direction: "BUY",
-                quantity: "",
-                price: "",
-                date: new Date().toISOString().split('T')[0],
-                notes: ""
-            })
+            if (!initialData) {
+                setFormData({
+                    symbol: ticker || "",
+                    direction: "BUY",
+                    quantity: "",
+                    price: "",
+                    date: new Date().toISOString().split('T')[0],
+                    notes: ""
+                })
+            }
 
             if (onSuccess) onSuccess()
             onClose()
 
         } catch (err: any) {
-            console.error("Error adding trade:", err)
-            setError(err.message || "Failed to add trade")
+            console.error("Error saving trade:", err)
+            setError(err.message || "Failed to save trade")
         } finally {
             setIsSubmitting(false)
         }

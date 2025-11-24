@@ -3,11 +3,14 @@
 
 import * as React from "react"
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Loader2, Plus } from "lucide-react"
+import { Loader2, Plus, Pencil, Trash2 } from "lucide-react"
 import { useTheme } from "@/components/ThemeProvider"
 import { StockNote } from "./StockNote"
 import { AddTradeModal } from "@/components/data/AddTradeModal"
+import { Modal } from "@/components/ui/modal"
 import { StockNotesService, StockNoteRecord } from "@/services/StockNotesService"
+import { TradeService, Trade } from "@/services/TradeService"
+import { format } from "date-fns"
 
 interface StockDetailProps {
     ticker: string | null
@@ -39,10 +42,31 @@ type CanvasNote = StockNoteRecord & {
 
 const DEFAULT_NOTE_CONTENT = [
     {
-        type: "paragraph",
+        type: "paragraph" as const,
         content: "Capture your thesis, catalysts, and invalidation levels here.",
     },
 ]
+
+const PLACEHOLDERS = [
+    "Capture your thesis, catalysts, and invalidation levels here.",
+    "What's your risk/reward ratio for this setup?",
+    "Note key support and resistance levels.",
+    "Why are you entering this trade right now?",
+    "What market conditions support this trade?",
+    "Don't forget to set your stop loss!",
+    "Is this a trend following or reversal trade?",
+    "What is the time horizon for this position?",
+    "Check the earnings calendar before entering.",
+    "Are there any upcoming macro events affecting this sector?"
+]
+
+const getNotePlaceholder = () => {
+    const text = PLACEHOLDERS[Math.floor(Math.random() * PLACEHOLDERS.length)]
+    return [{
+        type: "paragraph" as const,
+        content: text
+    }]
+}
 
 export function StockDetail({ ticker }: StockDetailProps) {
     const [isInfoOpen, setIsInfoOpen] = React.useState(false)
@@ -51,6 +75,8 @@ export function StockDetail({ ticker }: StockDetailProps) {
     const infoSectionId = React.useId()
     const [notes, setNotes] = React.useState<CanvasNote[]>([])
     const [isLoadingNotes, setIsLoadingNotes] = React.useState(false)
+    const [trades, setTrades] = React.useState<Trade[]>([])
+    const [isLoadingTrades, setIsLoadingTrades] = React.useState(false)
     const saveTimers = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
     const hydrateNote = React.useCallback((note: StockNoteRecord, idx: number): CanvasNote => ({
@@ -78,13 +104,28 @@ export function StockDetail({ ticker }: StockDetailProps) {
         }
     }, [hydrateNote])
 
+    const loadTrades = React.useCallback(async (symbol: string) => {
+        setIsLoadingTrades(true)
+        try {
+            const fetched = await TradeService.getTradesBySymbol(symbol)
+            setTrades(fetched)
+        } catch (error) {
+            console.error("Failed to load trades", error)
+            setTrades([])
+        } finally {
+            setIsLoadingTrades(false)
+        }
+    }, [])
+
     React.useEffect(() => {
         if (!ticker) {
             setNotes([])
+            setTrades([])
             return
         }
         loadNotes(ticker)
-    }, [ticker, loadNotes])
+        loadTrades(ticker)
+    }, [ticker, loadNotes, loadTrades])
 
     const addNote = React.useCallback(async () => {
         if (!ticker) return
@@ -95,7 +136,7 @@ export function StockDetail({ ticker }: StockDetailProps) {
             const created = await StockNotesService.createNote(
                 ticker,
                 "New Note",
-                DEFAULT_NOTE_CONTENT,
+                getNotePlaceholder(),
                 { x: offset, y: offset }
             )
             const withLayout: CanvasNote = {
@@ -172,6 +213,29 @@ export function StockDetail({ ticker }: StockDetailProps) {
     }, [])
 
     const [isTradeModalOpen, setIsTradeModalOpen] = React.useState(false)
+    const [editingTrade, setEditingTrade] = React.useState<Trade | null>(null)
+    const [deletingTradeId, setDeletingTradeId] = React.useState<string | null>(null)
+
+    const handleEditTrade = (trade: Trade) => {
+        setEditingTrade(trade)
+        setIsTradeModalOpen(true)
+    }
+
+    const handleDeleteClick = (tradeId: string) => {
+        setDeletingTradeId(tradeId)
+    }
+
+    const confirmDeleteTrade = async () => {
+        if (!deletingTradeId) return
+        
+        try {
+            await TradeService.deleteTrade(deletingTradeId)
+            setTrades(prev => prev.filter(t => t.id !== deletingTradeId))
+            setDeletingTradeId(null)
+        } catch (error) {
+            console.error("Failed to delete trade", error)
+        }
+    }
 
     if (!ticker) {
         return (
@@ -317,6 +381,82 @@ export function StockDetail({ ticker }: StockDetailProps) {
                         </div>
                     </div>
 
+                    {/* Recent Trades Section */}
+                    <div className="space-y-4">
+                        <h2 className="text-lg font-semibold">Recent Activity</h2>
+                        <div className="rounded-xl border bg-card overflow-hidden">
+                            {isLoadingTrades ? (
+                                <div className="p-8 flex justify-center">
+                                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                                </div>
+                            ) : trades.length > 0 ? (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead>
+                                            <tr className="border-b bg-muted/50">
+                                                <th className="h-10 px-4 text-left font-medium text-muted-foreground">Date</th>
+                                                <th className="h-10 px-4 text-left font-medium text-muted-foreground">Type</th>
+                                                <th className="h-10 px-4 text-right font-medium text-muted-foreground">Price</th>
+                                                <th className="h-10 px-4 text-right font-medium text-muted-foreground">Qty</th>
+                                                <th className="h-10 px-4 text-right font-medium text-muted-foreground">Total</th>
+                                                <th className="h-10 px-4 text-right font-medium text-muted-foreground">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {trades.map((trade) => (
+                                                <tr key={trade.id} className="border-b last:border-0 hover:bg-muted/50 transition-colors">
+                                                    <td className="p-4 text-muted-foreground">
+                                                        {format(new Date(trade.timestamp), "MMM d, yyyy HH:mm")}
+                                                    </td>
+                                                    <td className="p-4">
+                                                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                                            trade.direction === "BUY" 
+                                                                ? "bg-green-500/10 text-green-500" 
+                                                                : "bg-red-500/10 text-red-500"
+                                                        }`}>
+                                                            {trade.direction}
+                                                        </span>
+                                                    </td>
+                                                    <td className="p-4 text-right font-mono">
+                                                        ${trade.price.toFixed(2)}
+                                                    </td>
+                                                    <td className="p-4 text-right font-mono">
+                                                        {trade.quantity}
+                                                    </td>
+                                                    <td className="p-4 text-right font-mono font-medium">
+                                                        ${(trade.price * trade.quantity).toFixed(2)}
+                                                    </td>
+                                                    <td className="p-4 text-right">
+                                                        <div className="flex items-center justify-end gap-2">
+                                                            <button
+                                                                onClick={() => handleEditTrade(trade)}
+                                                                className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+                                                                title="Edit Trade"
+                                                            >
+                                                                <Pencil className="w-3.5 h-3.5" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleDeleteClick(trade.id)}
+                                                                className="p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-md transition-colors"
+                                                                title="Delete Trade"
+                                                            >
+                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <div className="p-8 text-center text-muted-foreground">
+                                    No trades logged for {ticker} yet.
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
                     {/* Notes Canvas Section */}
                     <div className="space-y-6">
                         <div className="flex items-center justify-between">
@@ -375,9 +515,42 @@ export function StockDetail({ ticker }: StockDetailProps) {
 
             <AddTradeModal
                 isOpen={isTradeModalOpen}
-                onClose={() => setIsTradeModalOpen(false)}
+                onClose={() => {
+                    setIsTradeModalOpen(false)
+                    setEditingTrade(null)
+                }}
                 ticker={ticker}
+                initialData={editingTrade}
+                onSuccess={() => {
+                    if (ticker) loadTrades(ticker)
+                }}
             />
+
+            <Modal
+                isOpen={!!deletingTradeId}
+                onClose={() => setDeletingTradeId(null)}
+                title="Delete Trade"
+            >
+                <div className="space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                        Are you sure you want to delete this trade? This action cannot be undone.
+                    </p>
+                    <div className="flex justify-end gap-2">
+                        <button
+                            onClick={() => setDeletingTradeId(null)}
+                            className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={confirmDeleteTrade}
+                            className="px-4 py-2 text-sm font-medium bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
+                        >
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            </Modal>
         </div>
     )
 }

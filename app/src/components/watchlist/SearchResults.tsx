@@ -5,11 +5,12 @@ import { MarketStock } from "@/services/MarketSearchService"
 interface SearchResultsProps {
     results: MarketStock[]
     onToggle: (stock: MarketStock) => void
+    onSelect: (stock: MarketStock) => void
     isSearching: boolean
     addedTickers: Set<string>
 }
 
-export function SearchResults({ results, onToggle, isSearching, addedTickers }: SearchResultsProps) {
+export function SearchResults({ results, onToggle, onSelect, isSearching, addedTickers }: SearchResultsProps) {
     const [hoverLockTickers, setHoverLockTickers] = React.useState<Set<string>>(() => new Set())
 
     const addHoverLock = (ticker: string) => {
@@ -63,7 +64,8 @@ export function SearchResults({ results, onToggle, isSearching, addedTickers }: 
                 return (
                     <div
                         key={stock.ticker}
-                        className="w-full text-left p-3 rounded-md bg-sidebar-accent/10 hover:bg-sidebar-accent/30 transition-colors flex items-center justify-between group border border-transparent hover:border-sidebar-border"
+                        onClick={() => onSelect(stock)}
+                        className="w-full text-left p-3 rounded-md bg-sidebar-accent/10 hover:bg-sidebar-accent/30 transition-colors flex items-center justify-between group border border-transparent hover:border-sidebar-border cursor-pointer"
                     >
                         <div>
                             <div className="font-medium flex items-center gap-2 text-sidebar-foreground">
@@ -86,7 +88,8 @@ export function SearchResults({ results, onToggle, isSearching, addedTickers }: 
                                 </div>
                             </div>
                             <button
-                                onClick={() => {
+                                onClick={(e) => {
+                                    e.stopPropagation()
                                     if (isAdded) {
                                         removeHoverLock(stock.ticker)
                                     } else {

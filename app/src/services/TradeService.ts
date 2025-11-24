@@ -27,6 +27,18 @@ export const TradeService = {
         return data as Trade[]
     },
 
+    async getTradesBySymbol(symbol: string) {
+        const supabase = createClient()
+        const { data, error } = await supabase
+            .from("trades")
+            .select("*")
+            .eq("symbol", symbol)
+            .order("timestamp", { ascending: false })
+
+        if (error) throw error
+        return data as Trade[]
+    },
+
     async addTrade(trade: Omit<Trade, "id" | "user_id" | "created_at">) {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
