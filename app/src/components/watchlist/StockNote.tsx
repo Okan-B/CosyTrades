@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { PartialBlock } from "@blocknote/core"
 import "@blocknote/core/fonts/inter.css"
 import { useCreateBlockNote } from "@blocknote/react"
 import { BlockNoteView } from "@blocknote/mantine"
@@ -15,10 +16,15 @@ interface StockNoteProps {
     initialY: number
     zIndex: number
     title: string
+    content?: PartialBlock[] | null
+    width?: number
+    height?: number
     dragConstraints: React.RefObject<Element>
     onDelete: (id: string) => void
     onPositionChange: (id: string, x: number, y: number) => void
     onTitleChange: (id: string, title: string) => void
+    onContentChange?: (id: string, content: PartialBlock[]) => void
+    onResize?: (id: string, width: number, height: number) => void
     onFocus: (id: string) => void
 }
 
@@ -35,16 +41,21 @@ export function StockNote({
     initialY,
     zIndex,
     title,
+    content,
+    width,
+    height,
     dragConstraints,
     onDelete,
     onPositionChange,
     onTitleChange,
+    onContentChange,
+    onResize,
     onFocus
 }: StockNoteProps) {
     const [isCollapsed, setIsCollapsed] = React.useState(false)
     const [dimensions, setDimensions] = React.useState({
-        width: DEFAULT_NOTE_WIDTH,
-        height: DEFAULT_NOTE_HEIGHT,
+        width: width ?? DEFAULT_NOTE_WIDTH,
+        height: height ?? DEFAULT_NOTE_HEIGHT,
     })
     const [position, setPosition] = React.useState({ x: initialX, y: initialY })
     const dragControls = useDragControls()
@@ -54,7 +65,7 @@ export function StockNote({
     }>({})
 
     const editor = useCreateBlockNote({
-        initialContent: [
+        initialContent: content || [
             {
                 type: "paragraph",
                 content: "",
@@ -62,6 +73,12 @@ export function StockNote({
         ],
         trailingBlock: false,
     })
+
+    React.useEffect(() => {
+        if (content && editor) {
+            editor.replaceBlocks(editor.document, content)
+        }
+    }, [content, editor])
 
     React.useEffect(() => {
         return () => {
@@ -112,6 +129,7 @@ export function StockNote({
                 width: newWidth,
                 height: newHeight,
             })
+            onResize?.(id, newWidth, newHeight)
         }
 
         const handleUp = () => {
@@ -131,7 +149,7 @@ export function StockNote({
 
         window.addEventListener("pointermove", handleMove)
         window.addEventListener("pointerup", handleUp, { once: false })
-    }, [dimensions, id, onFocus, position, dragConstraints])
+    }, [dimensions, id, onFocus, position, dragConstraints, onResize])
 
     const bodyHeight = Math.max(MIN_NOTE_HEIGHT - HEADER_HEIGHT, dimensions.height - HEADER_HEIGHT)
 
@@ -195,19 +213,21 @@ export function StockNote({
             {/* Note Body */}
             {!isCollapsed && (
                 <div
-                    className="flex-1 overflow-auto bg-card p-2 rounded-b-xl cursor-text"
-                    style={{
-                        height: bodyHeight,
-                        minHeight: MIN_NOTE_HEIGHT - HEADER_HEIGHT
-                    }}
-                >
-                    <BlockNoteView
-                        editor={editor}
-                        theme={theme}
-                        className="h-full"
-                    />
-                </div>
-            )}
+                className="flex-1 overflow-auto bg-card p-2 rounded-b-xl cursor-text"
+                style={{
+                    height: bodyHeight,
+                    minHeight: MIN_NOTE_HEIGHT - HEADER_HEIGHT
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+            >
+                <BlockNoteView
+                    editor={editor}
+                    theme={theme}
+                    className="h-full"
+                    onChange={() => onContentChange?.(id, editor.document)}
+                />
+            </div>
+        )}
 
             {/* Resize Handle */}
             <div

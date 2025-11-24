@@ -6,13 +6,19 @@ import { CanvasCard } from "./CanvasCard"
 
 import { CanvasService, Canvas } from "@/services/CanvasService"
 import { toast } from "sonner"
+import { createClient } from "@/lib/supabase/client"
 
 export function CommunityCanvasExplorer() {
     const [searchQuery, setSearchQuery] = React.useState("")
     const [canvases, setCanvases] = React.useState<Canvas[]>([])
     const [isLoading, setIsLoading] = React.useState(true)
+    const [userId, setUserId] = React.useState<string | null>(null)
 
     React.useEffect(() => {
+        const supabase = createClient()
+        supabase.auth.getUser()
+            .then(({ data }) => setUserId(data.user?.id ?? null))
+            .catch(() => setUserId(null))
         loadCanvases()
     }, [])
 
@@ -41,6 +47,17 @@ export function CommunityCanvasExplorer() {
         } catch (error) {
             console.error("Failed to import canvas", error)
             toast.error("Failed to import canvas")
+        }
+    }
+
+    const handleRemove = async (canvasId: string) => {
+        try {
+            await CanvasService.unpublishCanvas(canvasId)
+            setCanvases(prev => prev.filter(c => c.id !== canvasId))
+            toast.success("Removed from community gallery.")
+        } catch (error) {
+            console.error("Failed to remove canvas", error)
+            toast.error("Couldn't remove this canvas.")
         }
     }
 
@@ -75,7 +92,13 @@ export function CommunityCanvasExplorer() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto pb-4">
                     {filteredCanvases.length > 0 ? (
                         filteredCanvases.map(setup => (
-                            <CanvasCard key={setup.id} setup={setup} onImport={handleImport} />
+                            <CanvasCard
+                                key={setup.id}
+                                setup={setup}
+                                onImport={handleImport}
+                                canRemove={userId === setup.user_id}
+                                onRemove={handleRemove}
+                            />
                         ))
                     ) : (
                         <div className="col-span-2 text-center py-10 text-muted-foreground">

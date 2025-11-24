@@ -1,14 +1,17 @@
 "use client"
 
 import * as React from "react"
-import { Heart, Download, Share2 } from "lucide-react"
+import { Heart, Download, Share2, Trash2 } from "lucide-react"
+import { Canvas } from "@/services/CanvasService"
 
 export interface CanvasCardProps {
-    setup: any // Using any temporarily to avoid circular deps, but ideally should be Canvas type
-    onImport: (canvas: any) => void
+    setup: Canvas
+    onImport: (canvas: Canvas) => void
+    canRemove?: boolean
+    onRemove?: (id: string) => void
 }
 
-export function CanvasCard({ setup, onImport }: CanvasCardProps) {
+export function CanvasCard({ setup, onImport, canRemove = false, onRemove }: CanvasCardProps) {
     const [likes, setLikes] = React.useState(setup.likes_count || 0)
     const [hasLiked, setHasLiked] = React.useState(false)
 
@@ -28,7 +31,7 @@ export function CanvasCard({ setup, onImport }: CanvasCardProps) {
             <div className="flex justify-between items-start">
                 <div>
                     <h3 className="font-semibold text-lg text-card-foreground group-hover:text-primary transition-colors">{setup.name}</h3>
-                    <p className="text-sm text-muted-foreground">by {setup.author_name || "Unknown Trader"}</p>
+                    <p className="text-sm text-muted-foreground">by {setup.author_name || setup.users?.email || "Community trader"}</p>
                 </div>
                 <div className="flex gap-1 flex-wrap justify-end max-w-[40%]">
                     {setup.tags?.map((tag: string) => (
@@ -56,6 +59,15 @@ export function CanvasCard({ setup, onImport }: CanvasCardProps) {
                     <button className="p-1.5 rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors" title="Share">
                         <Share2 className="w-4 h-4" />
                     </button>
+                    {canRemove && (
+                        <button
+                            onClick={() => onRemove?.(setup.id)}
+                            className="p-1.5 rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                            title="Remove from community"
+                        >
+                            <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                    )}
                     <button 
                         onClick={() => onImport(setup)}
                         className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground text-xs font-medium rounded-md hover:bg-primary/90 transition-colors"

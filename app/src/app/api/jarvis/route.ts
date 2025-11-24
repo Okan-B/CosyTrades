@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 
 export async function POST(req: Request) {
     try {
-        const { messages, context } = await req.json()
+        const { messages, context, systemPrompt: userSystemPrompt } = await req.json()
         const apiKey = process.env.OPENAI_API_KEY
         const model = process.env.JARVIS_MODEL || "gpt-5.1-mini"
 
@@ -13,8 +13,10 @@ export async function POST(req: Request) {
             )
         }
 
-        const systemPrompt = `
-        You are "Jarvis", the built-in trading companion inside the cosytrades app.
+        const workspaceContext = context || {}
+
+        const basePrompt = `
+You are "Jarvis", the built-in trading companion inside the cosytrades app.
 You are not super formal. You speak like an intelligent, grounded friend who understands trading, journaling, and the user's style. Avoid corporate/LinkedIn tone and avoid emojis unless the user clearly uses them first.
 
 ROLE
@@ -93,14 +95,24 @@ DEFAULT STYLE
 - Default to clear, concise answers first, with the option to go deeper if the user asks.
 - Structure your replies with short headings or bullet points when it improves clarity.
 - Stay grounded, human, and personal. The user should feel like Jarvis knows them because you continuously incorporate their journal, watchlist, and notes into your reasoning.
+`
 
+        const trimmedPersonalPrompt = typeof userSystemPrompt === "string" ? userSystemPrompt.trim() : ""
 
+        const personalPrompt = trimmedPersonalPrompt
+            ? `\nUSER'S PERSONAL PROMPT (respect this tone and preferences):\n${trimmedPersonalPrompt}\n`
+            : ""
+
+        const systemPrompt = `
+${basePrompt}
+${personalPrompt}
 Here is the current context of the trader's workspace:
-Current Date: ${context.currentDate}
-Active Canvas: ${JSON.stringify(context.activeCanvas)}
-Watchlist: ${JSON.stringify(context.watchlist)}
-Recent Trades: ${JSON.stringify(context.recentTrades)}
-Recent Journal Entries: ${JSON.stringify(context.journalEntries)}
+- Current Date: ${workspaceContext.currentDate || new Date().toISOString()}
+- Active Canvas: ${JSON.stringify(workspaceContext.activeCanvas)}
+- Watchlist: ${JSON.stringify(workspaceContext.watchlist)}
+- Recent Trades: ${JSON.stringify(workspaceContext.recentTrades)}
+- Recent Journal Entries: ${JSON.stringify(workspaceContext.journalEntries)}
+- Stock Notes by Ticker: ${formatStockNotes(workspaceContext.stockNotes)}
 `
 
         const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -151,4 +163,17 @@ Recent Journal Entries: ${JSON.stringify(context.journalEntries)}
             { status: 500 }
         )
     }
+}
+
+function formatStockNotes(stockNotes?: { symbol: string; notes: { title: string; excerpt: string; updated_at: string }[] }[]) {
+    if (!stockNotes || stockNotes.length === 0) return "No saved stock notes yet."
+
+    return stockNotes
+        .map(stock => {
+            const noteSummaries = (stock.notes || [])
+                .map(note => `${note.title}: ${note.excerpt || "No content"}`)
+                .join(" | ")
+            return `${stock.symbol} -> ${noteSummaries || "No notes yet"}`
+        })
+        .join("\n")
 }

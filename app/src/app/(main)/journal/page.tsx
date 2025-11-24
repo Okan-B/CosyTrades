@@ -138,7 +138,7 @@ export default function JournalPage() {
                     ) : lastSaved ? (
                         <>
                             <Check className="h-4 w-4 text-green-600" />
-                            <span>Saved {lastSaved.toLocaleTimeString()}</span>
+                            <span>Saved {lastSaved.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                         </>
                     ) : null}
                 </div>

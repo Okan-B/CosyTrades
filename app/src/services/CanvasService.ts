@@ -20,6 +20,10 @@ export interface Canvas {
     description?: string
     tags?: string[]
     author_name?: string // For joined queries
+    users?: {
+        email?: string
+        settings?: Record<string, any>
+    }
 }
 
 export const CanvasService = {
@@ -46,10 +50,9 @@ export const CanvasService = {
     async getCommunityCanvases() {
         const supabase = createClient()
 
-        // In a real app, we might join with a profiles table to get author names
         const { data, error } = await supabase
             .from("canvases")
-            .select("*")
+            .select("*, users:users(email, settings)")
             .eq("is_public", true)
             .order("likes_count", { ascending: false })
             .limit(50)
@@ -59,7 +62,13 @@ export const CanvasService = {
             return []
         }
 
-        return data as Canvas[]
+        return (data || []).map(canvas => ({
+            ...canvas,
+            author_name:
+                (canvas as any)?.users?.settings?.display_name ||
+                (canvas as any)?.users?.email?.split("@")[0] ||
+                "Trader"
+        })) as Canvas[]
     },
 
     async saveCanvas(name: string, layout: CanvasLayout, isPublic: boolean = false, description?: string, tags?: string[]) {
@@ -91,6 +100,16 @@ export const CanvasService = {
         const { error } = await supabase
             .from("canvases")
             .update(updates)
+            .eq("id", id)
+
+        if (error) throw error
+    },
+
+    async unpublishCanvas(id: string) {
+        const supabase = createClient()
+        const { error } = await supabase
+            .from("canvases")
+            .update({ is_public: false })
             .eq("id", id)
 
         if (error) throw error

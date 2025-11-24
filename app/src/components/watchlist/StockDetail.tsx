@@ -3,10 +3,11 @@
 
 import * as React from "react"
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Plus } from "lucide-react"
+import { Loader2, Plus } from "lucide-react"
 import { useTheme } from "@/components/ThemeProvider"
 import { StockNote } from "./StockNote"
 import { AddTradeModal } from "@/components/data/AddTradeModal"
+import { StockNotesService, StockNoteRecord } from "@/services/StockNotesService"
 
 interface StockDetailProps {
     ticker: string | null
@@ -30,64 +31,153 @@ const data = [
     { name: '16:00', price: 182.5 },
 ];
 
+type CanvasNote = StockNoteRecord & {
+    x: number
+    y: number
+    zIndex: number
+}
+
+const DEFAULT_NOTE_CONTENT = [
+    {
+        type: "paragraph",
+        content: "Capture your thesis, catalysts, and invalidation levels here.",
+    },
+]
+
 export function StockDetail({ ticker }: StockDetailProps) {
     const [isInfoOpen, setIsInfoOpen] = React.useState(false)
     const { theme } = useTheme()
     const canvasRef = React.useRef<HTMLDivElement>(null)
     const infoSectionId = React.useId()
+    const [notes, setNotes] = React.useState<CanvasNote[]>([])
+    const [isLoadingNotes, setIsLoadingNotes] = React.useState(false)
+    const saveTimers = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
-    // State for dynamic notes
-    // Start with one note by default
-    const [notes, setNotes] = React.useState<{ id: string; x: number; y: number; zIndex: number; title: string }[]>([
-        { id: '1', x: 0, y: 0, zIndex: 1, title: 'Investment Thesis' }
-    ])
+    const hydrateNote = React.useCallback((note: StockNoteRecord, idx: number): CanvasNote => ({
+        ...note,
+        x: note.position?.x ?? idx * 24,
+        y: note.position?.y ?? idx * 18,
+        zIndex: idx + 1
+    }), [])
 
-    const addNote = () => {
-        const newId = Math.random().toString(36).substr(2, 9)
-        // Add new note with a slight offset so they don't stack perfectly
-        const offset = notes.length * 20
-        // Find max z-index to place new note on top
+    const loadNotes = React.useCallback(async (symbol: string) => {
+        setIsLoadingNotes(true)
+        try {
+            const fetched = await StockNotesService.getNotesForSymbol(symbol)
+            let resolved = fetched
+            if (fetched.length === 0) {
+                const created = await StockNotesService.createNote(symbol, "Investment Thesis", DEFAULT_NOTE_CONTENT, { x: 0, y: 0 })
+                resolved = [created]
+            }
+            setNotes(resolved.map((note, idx) => hydrateNote(note, idx)))
+        } catch (error) {
+            console.error("Failed to load stock notes", error)
+            setNotes([])
+        } finally {
+            setIsLoadingNotes(false)
+        }
+    }, [hydrateNote])
+
+    React.useEffect(() => {
+        if (!ticker) {
+            setNotes([])
+            return
+        }
+        loadNotes(ticker)
+    }, [ticker, loadNotes])
+
+    const addNote = React.useCallback(async () => {
+        if (!ticker) return
+        const offset = notes.length * 24
         const maxZ = Math.max(0, ...notes.map(n => n.zIndex))
-        setNotes(prev => [{ id: newId, x: offset, y: offset, zIndex: maxZ + 1, title: 'New Note' }, ...prev])
-    }
 
-    const deleteNote = (id: string) => {
-        setNotes(prev => prev.filter(note => note.id !== id))
-    }
+        try {
+            const created = await StockNotesService.createNote(
+                ticker,
+                "New Note",
+                DEFAULT_NOTE_CONTENT,
+                { x: offset, y: offset }
+            )
+            const withLayout: CanvasNote = {
+                ...created,
+                x: created.position?.x ?? offset,
+                y: created.position?.y ?? offset,
+                zIndex: maxZ + 1
+            }
+            setNotes(prev => [withLayout, ...prev])
+        } catch (error) {
+            console.error("Failed to create note", error)
+        }
+    }, [notes, ticker])
 
-    const updateNotePosition = (id: string, x: number, y: number) => {
+    const deleteNote = React.useCallback(async (id: string) => {
+        if (!ticker) return
+        try {
+            await StockNotesService.deleteNote(ticker, id)
+            setNotes(prev => prev.filter(note => note.id !== id))
+        } catch (error) {
+            console.error("Failed to delete note", error)
+        }
+    }, [ticker])
+
+    const updateNotePosition = React.useCallback((id: string, x: number, y: number) => {
         setNotes(prev => prev.map(note =>
             note.id === id ? { ...note, x, y } : note
         ))
-    }
+        if (ticker) {
+            StockNotesService.updateNote(ticker, id, { position: { x, y } })
+        }
+    }, [ticker])
 
-    const updateNoteTitle = (id: string, title: string) => {
+    const updateNoteSize = React.useCallback((id: string, width: number, height: number) => {
+        setNotes(prev => prev.map(note =>
+            note.id === id ? { ...note, size: { width, height } } : note
+        ))
+        if (ticker) {
+            StockNotesService.updateNote(ticker, id, { size: { width, height } })
+        }
+    }, [ticker])
+
+    const updateNoteTitle = React.useCallback((id: string, title: string) => {
         setNotes(prev => prev.map(note =>
             note.id === id ? { ...note, title } : note
         ))
-    }
+        if (ticker) {
+            StockNotesService.updateNote(ticker, id, { title })
+        }
+    }, [ticker])
 
-    const bringToFront = (id: string) => {
+    const updateNoteContent = React.useCallback((id: string, content: StockNoteRecord["content"]) => {
+        setNotes(prev => prev.map(note =>
+            note.id === id ? { ...note, content } : note
+        ))
+        if (ticker) {
+            if (saveTimers.current[id]) clearTimeout(saveTimers.current[id])
+            saveTimers.current[id] = setTimeout(() => {
+                StockNotesService.updateNote(ticker, id, { content })
+            }, 600)
+        }
+    }, [ticker])
+
+    const bringToFront = React.useCallback((id: string) => {
         setNotes(prev => {
             const maxZ = Math.max(0, ...prev.map(n => n.zIndex))
             const note = prev.find(n => n.id === id)
-            // Optimization: If note is already at the top, don't update state
-            // This prevents re-renders that interrupt color picker clicks
             if (note && note.zIndex === maxZ) return prev
 
             return prev.map(note =>
                 note.id === id ? { ...note, zIndex: maxZ + 1 } : note
             )
         })
-    }
+    }, [])
 
     const [isTradeModalOpen, setIsTradeModalOpen] = React.useState(false)
 
     if (!ticker) {
         return (
             <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 bg-background">
-                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
-                    <span className="text-2xl">🔍</span>
+                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4 text-foreground">
+                    <span className="text-xl font-semibold">Watch</span>
                 </div>
                 <h3 className="text-xl font-semibold mb-2">Select a stock</h3>
                 <p>Choose a ticker from the watchlist to view details and notes.</p>
@@ -231,7 +321,7 @@ export function StockDetail({ ticker }: StockDetailProps) {
                     <div className="space-y-6">
                         <div className="flex items-center justify-between">
                             <h2 className="text-lg font-semibold flex items-center gap-2">
-                                <span>📝</span> Investment Canvas
+                                <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg border bg-muted text-xs font-semibold tracking-wide">IN</span> Investment Canvas
                             </h2>
                             <button
                                 onClick={addNote}
@@ -244,6 +334,14 @@ export function StockDetail({ ticker }: StockDetailProps) {
 
                         {/* Canvas Container */}
                         <div ref={canvasRef} className="relative min-h-[600px] rounded-xl border-2 border-dashed border-muted/50 bg-muted/10 overflow-hidden">
+                            {isLoadingNotes && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-background/70 backdrop-blur-sm z-20">
+                                    <div className="flex items-center gap-2 text-muted-foreground">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        <span>Loading your notes...</span>
+                                    </div>
+                                </div>
+                            )}
                             {notes.map(note => (
                                 <StockNote
                                     key={note.id}
@@ -252,15 +350,20 @@ export function StockDetail({ ticker }: StockDetailProps) {
                                     initialY={note.y}
                                     zIndex={note.zIndex}
                                     title={note.title}
+                                    content={note.content}
+                                    width={note.size?.width}
+                                    height={note.size?.height}
                                     theme={theme === "dark" ? "dark" : "light"}
                                     dragConstraints={canvasRef as React.RefObject<Element>}
                                     onDelete={deleteNote}
                                     onPositionChange={updateNotePosition}
                                     onTitleChange={updateNoteTitle}
+                                    onContentChange={updateNoteContent}
+                                    onResize={updateNoteSize}
                                     onFocus={bringToFront}
                                 />
                             ))}
-                            {notes.length === 0 && (
+                            {!isLoadingNotes && notes.length === 0 && (
                                 <div className="absolute inset-0 flex items-center justify-center text-muted-foreground pointer-events-none">
                                     <p>Click Add Note to start building your thesis.</p>
                                 </div>
